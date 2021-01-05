@@ -5,7 +5,7 @@ import struct
 
 
 VICTIM_ADDR = 'http://localhost:8009/'
-FAKE_FTP_ADDR = 'ftp://libz.so:31337/pwned'
+FAKE_FTP_ADDR = 'ftp://cursed.page:31337/pwned'
 EVIL_SCRIPT_ID = os.urandom(16).hex()
 FLAG_TXT_ID = os.urandom(16).hex()
 
