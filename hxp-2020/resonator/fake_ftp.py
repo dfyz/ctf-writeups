@@ -35,6 +35,7 @@ class FakeFTP(socketserver.StreamRequestHandler):
                 raise Exception('Unknown command')
 
 
-with socketserver.TCPServer(('', 31337), FakeFTP) as server:
-    print('Welcome to FakeFTP')
-    server.serve_forever()
+if __name__ == '__main__':
+    with socketserver.TCPServer(('', 31337), FakeFTP) as server:
+        print('Welcome to FakeFTP')
+        server.serve_forever()
