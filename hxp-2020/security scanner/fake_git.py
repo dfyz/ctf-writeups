@@ -258,7 +258,7 @@ if __name__ == '__main__':
     server_socket.bind(('0.0.0.0', args.port))
     server_socket.listen(1)
 
-    print('Welcome to FakeTLS')
+    print('Welcome to FakeGIT')
 
     should_serve = True
     session_id = b''
