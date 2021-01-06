@@ -284,8 +284,9 @@ if __name__ == '__main__':
             while len(b64_sandbox_id) % 4 != 0:
                 b64_sandbox_id += b'='
             sandbox_id = base64.b64decode(b64_sandbox_id)
+            assert len(sandbox_id) == 10, f'The sandbox id should have exactly 10 bytes, got: {sandbox_id}'
             session_id = b'\r\nset ' + sandbox_id + b';/r* 0 0 2\r\nOK\r\n'
-            assert len(session_id) == 32, f'The session id is too long: {session_id}'
+            assert len(session_id) == 32, f'The session should have exactly 32 bytes, got: {session_id}'
             print(f'Got sandbox id: {sandbox_id}, session_id: {session_id}')
 
             fake_git = '001e# service=git-upload-pack\n'
