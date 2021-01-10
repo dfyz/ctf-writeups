@@ -104,4 +104,4 @@ P.S. Some of the minor details were omitted for clarity in this writeup:
   * the memcached instance was shared between the teams during the CTF, so the security scanner prepends a "sandbox ID" at the beginning of memcached keys.
   The sandbox ID is different for each team and is stored in the PHP session;
   * with the sandbox ID in place, `;/readflag` is actually too long to fit in the TLS session id and has to be shortened to `;/r*` (we're lucky that there are no other binaries starting with `r` in `/`).
-  * 
+  * the organizers told us the intended solution for this challenge was using FTPS instead of HTTPS. This is left as an exercise for the reader. :-)
