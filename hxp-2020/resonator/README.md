@@ -50,6 +50,6 @@ obviously won't send anything back to the client. Our PHP payload saves the flag
 This means that the flag can't be overwritten by `file_put_contents()` and we can retrieve it simply with `GET /index.php?file=/tmp/whatever`.
 Combining all the pieces, we run [the exploit](https://github.com/dfyz/ctf-writeups/blob/master/hxp-2020/resonator/exploit.py) and finally get what we want:
 ```
-PS > python .\exploit.py
+PS> python .\exploit.py [REDACTED_IP]
 hxp{I_hope_you_did_not_had_to_read_php-src_for_this____lolphp}
 ```
