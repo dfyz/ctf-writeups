@@ -8,7 +8,7 @@ exec(code, namespace, namespace)
 ```
 
 
-Of course, you cannot simply execute arbitrary code and read a flag, the authors made `audited.py` look like some sort of a sandbox with a relatively recent feature [runtime audit hooks](https://www.python.org/dev/peps/pep-0578/).
+Of course, you cannot simply execute arbitrary code and read a flag, the authors made `audited.py` look like some sort of a sandbox with a relatively recent feature [runtime audit hooks](https://www.python.org/dev/peps/pep-0578/). TLDR: all things from [this table](https://docs.python.org/3/library/audit_events.html) raise an audit event which is processed by a callable registered with `sys.addaudithook`.
 
 The hook is quite straighforward:
 ```python
