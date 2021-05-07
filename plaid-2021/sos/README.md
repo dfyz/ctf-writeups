@@ -28,7 +28,7 @@ Unsafe functions, such as `Array.unsafe_get`, which could allow us to subvert th
 So, how do we escape the sandbox to read the flag?
 
 Before we get to the final exploit, I want to briefly discuss a couple of unintended solutions,
-and also our failed attempts at breaking out of the sandbox. If you're only interested in the solution out team came up with, you can jump directly to that.
+and also our failed attempts at breaking out of the sandbox. If you're only interested in the solution our team came up with, you can jump directly to that.
 
 Insecure OCaml Sandbox
 ---
@@ -94,6 +94,7 @@ oob ()
 
 Both `y` and `!x` have the same bit representation, but different types and hence different values:
 
+![Type confusion](sos.001.png)
 
 Notice that even though the bit pattern was `00...011`, `g` prints `1` instead of the more expected `3`. Turns out that OCaml unboxes integers for performance and stores them [`shifted left by 1 bit, with the least significant bit set to 1`](https://dev.realworldocaml.org/runtime-memory-layout.html#table20-1_ocaml) to distinguish them from object references. This is going to be somewhat important for our exploit.
 
@@ -105,6 +106,8 @@ With all the necessary machinery in place, the idea of the exploit is straightfo
   * use `open_in` to open and read the flag.
 
 The same thing, but in a picture:
+
+![Changing the pointer](sos.002.png)
 
 
 And finally, the code, which is not that different from the demo above:
