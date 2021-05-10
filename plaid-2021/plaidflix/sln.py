@@ -10,7 +10,7 @@ class MenuNavigator:
         menu_str = self.p.recvuntil('\n> ')
         self.menu = {}
         for line in menu_str.splitlines():
-            if (m := re.search(b'^(\d) - (.*)$', line)) is not None:
+            if (m := re.search(b'^(\\d) - (.*)$', line)) is not None:
                 self.menu[m.group(2)] = m.group(1)
         return menu_str
 
@@ -110,7 +110,7 @@ def leak_addrs(mn):
 
     leaks = []
     for line in mn.show_movies().splitlines():
-        if (m := re.search(b'^\* Shared with: (.*)$', line)) is not None:
+        if (m := re.search(b'^\\* Shared with: (.*)$', line)) is not None:
             leaks.append(unpack(m.group(1), 'all'))
     return leaks
 
