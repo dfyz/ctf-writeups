@@ -114,17 +114,17 @@ Let's first pretend there's no ASLR and try to reach `__free_hook` anyway. The h
 
 What if we set the size of the dummy chunk to a very large value? Then we can allocate a fake chunk that will span the difference between the heap and glibc (we don't write anything into it, so it's OK) and another chunk right before `__free_hook`:
 
-**???**
+![heap 1](heap_1.png)
 
 We can then edit the chunk before `__free_hook` and set it to `system()`. This would actually work, if it wasn't for the fact that glibc expects to find heap metadata for a chunk by [zeroing](https://sourceware.org/git/?p=glibc.git;a=blob;f=malloc/arena.c;h=37183cfb6ab5d0735cc82759626670aff3832cd0;hb=23158b08a0908f381459f273a984c6fd328363cb#l128) its last 3 bytes. In the picture, `__free_hook` has address `0x7f7c3cded8e8`, but there's no valid heap metadata at `0x7f7c3c000000` (we only have one at `0x7f7c38000000`), so we segfault.
 
 Okay! After reading more source code we find out that there are no limits on the size of the chunk we allocate. Let's allocate a chunk so large it wraps around in 64-bit address space (setting the size of the dummy chunk to `MAX_INT` before that) and lands *inside* heap metadata. The difference between the dummy chunk and the heap metadata is constant, so we don't even need an ASLR bypass. This way, we get an ability to corrupt heap metadata:
 
-**???**
+![heap 2](heap_2.png)
 
 It is not hard to see what metadata we should corrupt: the heap metadata has pointers to linked lists of free chunks that are can be used to serve allocations. The layout of metadata looks roughly like this:
 
-**???**
+![bins](bins.png)
 
 `bins` is a doubly-linked list of chunks, `fastbinsY` is a singly-linked one. If we place a fake chunk that points to `__free_hook` on either, we win. Which one to choose?
 
@@ -140,11 +140,11 @@ But even we target `fastbinsY` (which is singly-linked) instead, we face another
 
 [This](https://sourceware.org/git/?p=glibc.git;a=blob;f=malloc/malloc.c;h=f8e7250f70f6f26b0acb5901bcc4f6e39a8a52b2;hb=23158b08a0908f381459f273a984c6fd328363cb#l1591) is the function used to convert the chunk size into the fastbin index. Essentially, this means we need to arrange a fake chunk like this in memory:
 
-**???**
+![fast 1](fast_1.png)
 
 Here, `??` should be an arbitrary number from `20` to `80`. Here we get lucky once again: there are locks for standard streams just before `__free_hook`. When they are locked, their `owner` [field](https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/nptl/libc-lock.h;h=801bcf7913a3ea7a0c7bd3ba529164902e8974c9;hb=23158b08a0908f381459f273a984c6fd328363cb#l32) is set to an address somewhere in libc, which looks like `0x00007f...`. Since `0x7f` is a valid fastbin chunk size, we can form a fake chunk around the `owner` like this:
 
-**???**
+![fast 2](fast_2.png)
 
 How do we ensure that stdout locked when we are allocating the fake chunk, though?  We can just use the same race condition again to make `printf()` block for a long time. And `printf()` holds the stdout lock.
 
