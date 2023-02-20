@@ -60,7 +60,7 @@ The supervisor redirects the stdout of the daemon to a [pipe](https://man7.org/l
 >
 > [...] the pipe capacity is 16 pages (i.e., 65,536 bytes in a system with a page size of 4096 bytes).
 
-This suggests that if we write 65K bytes to stdout and the supervisor fails to read them in time, the next write will block. Indeed, when we run a pair of test programs ([Rust parent](ctf-writeups/tree/master/dice-2023/sice/parent.rs), [C child](ctf-writeups/tree/master/dice-2023/sice/child.rs)) under [strace](https://strace.io/), we get the following output:
+This suggests that if we write 65K bytes to stdout and the supervisor fails to read them in time, the next write will block. Indeed, when we run a pair of test programs ([Rust parent](parent.rs), [C child](child.rs)) under [strace](https://strace.io/), we get the following output:
 ```
 7992  19:55:21 clock_nanosleep(CLOCK_REALTIME, 0, {tv_sec=10, tv_nsec=0},  <unfinished ...>
 ...
@@ -148,6 +148,6 @@ Here, `??` should be an arbitrary number from `20` to `80`. Here we get lucky on
 
 How do we ensure that stdout locked when we are allocating the fake chunk, though?  We can just use the same race condition again to make `printf()` block for a long time. And `printf()` holds the stdout lock.
 
-Combining everything into a big hairy [exploit](ctf-writeups/tree/master/dice-2023/sice/solve.py), we run it against the remote server and finally get the flag:
+Combining everything into a big hairy [exploit](solve.py), we run it against the remote server and finally get the flag:
 
 **???**
