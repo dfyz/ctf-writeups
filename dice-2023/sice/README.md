@@ -150,4 +150,4 @@ How do we ensure that stdout locked when we are allocating the fake chunk, thoug
 
 Combining everything into a big hairy [exploit](solve.py), we run it against the remote server and finally get the flag:
 
-**???**
+![flag](flag.png)
