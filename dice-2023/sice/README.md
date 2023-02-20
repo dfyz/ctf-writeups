@@ -29,7 +29,7 @@ sleep(3);
 
 In other words, instead of properly waiting for the thread to terminate (with [pthread_join()](https://man7.org/linux/man-pages/man3/pthread_join.3.html)) before starting a new command, we just assume it terminates in no more than 3 seconds.
 
-### An wild race condition appears
+### A wild race condition appears
 
 🚩🚩🚩NEVER EVER DO THIS IN REAL LIFE🚩🚩🚩
 
