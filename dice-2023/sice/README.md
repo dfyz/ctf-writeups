@@ -102,7 +102,7 @@ Sadly, we still have a long way to go to remote code execution. Data chunks are 
 
 Poking into the daemon binary with `gdb` and cross-referencing the results against the source code, we can determine that the memory layout looks like this:
 
-**???**
+![heap before](heap_before.png)
 
 Our data chunks are created from auxiliary threads, so they get placed in a [heap](https://sourceware.org/git/?p=glibc.git;a=blob;f=malloc/arena.c;h=37183cfb6ab5d0735cc82759626670aff3832cd0;hb=23158b08a0908f381459f273a984c6fd328363cb#l452) that is allocated with `mmap()`. glibc is also allocated with `mmap`, so the heap and `__free_hook` are thankfully not too far from each other. However:
   * Due to the way the challenge is setup, we can only overflow up to 100K bytes, but the difference between the heap and `__free_hook` is much larger than 100K bytes.
