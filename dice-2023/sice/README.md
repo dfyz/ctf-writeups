@@ -142,11 +142,11 @@ But even we target `fastbinsY` (which is singly-linked) instead, we face another
 
 ![fast 1](fast_1.png)
 
-Here, `??` should be an arbitrary number from `20` to `80`. Here we get lucky once again: there are locks for standard streams just before `__free_hook`. When they are locked, their `owner` [field](https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/nptl/libc-lock.h;h=801bcf7913a3ea7a0c7bd3ba529164902e8974c9;hb=23158b08a0908f381459f273a984c6fd328363cb#l32) is set to an address somewhere in libc, which looks like `0x00007f...`. Since `0x7f` is a valid fastbin chunk size, we can form a fake chunk around the `owner` like this:
+Here, `??` should be an arbitrary number from `20` to `80`. Here we get lucky once again: there are locks for standard streams just before `__free_hook`. When they are locked, their `owner` [field](https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/nptl/libc-lock.h;h=801bcf7913a3ea7a0c7bd3ba529164902e8974c9;hb=23158b08a0908f381459f273a984c6fd328363cb#l32) is set to an address somewhere in libc, which looks like `0x00007f...`. Since `0x7f` is a valid fastbin chunk size, we can form a fake chunk around the `owner` of the stdout lock like this:
 
 ![fast 2](fast_2.png)
 
-How do we ensure that stdout locked when we are allocating the fake chunk, though?  We can just use the same race condition again to make `printf()` block for a long time. And `printf()` holds the stdout lock.
+How do we ensure that stdout is locked when we are allocating the fake chunk, though?  We can just use the same race condition again to make `printf()` block for a long time. And `printf()` holds the stdout lock.
 
 Combining everything into a big hairy [exploit](solve.py), we run it against the remote server and finally get the flag:
 
