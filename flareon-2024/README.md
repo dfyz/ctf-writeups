@@ -50,3 +50,5 @@ However, a more comprehensive guesser instantly found the right second half: `pa
 And here's is the almost successfull LLM attempt to reconstruct the final flag (it didn't recognize the leetspeak in the last image).
 
 ![final_flag](https://github.com/user-attachments/assets/c48eb8d5-5e7e-4cb8-ad91-4f7368eb0c06)
+
+All in all, I'm very glad that there is now a viable way to speed up solving this kind of tasks. The challenge is nicely designed, but reverse engineering a bytecode for custom VM is only fun the first 100 times you do it, after that it becomes more of a chore. :)
